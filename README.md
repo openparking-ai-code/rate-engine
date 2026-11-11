@@ -1,5 +1,7 @@
 # Open Parking AI — rate engine
 
+> **Vehicle ID is not in these repositories.** It is Open Parking AI's own vehicle identification service, which recognises a car from its pictures, colour, shape and plate together. Garage owners can use it **free, through an API**: ask for access at [openparking.ai](https://openparking.ai). Once we have confirmed you run a real garage, we send you your key.
+
 Price a parking stay, and **explain every line of the answer**.
 
 Rates are where parking software confuses people. Every state handles them
