@@ -1,0 +1,84 @@
+{
+  "plan_version": "downtown-2026-02",
+  "effective_from": "2026-02-01T00:00:00-05:00",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "space_classes": [
+    "standard",
+    "vip"
+  ],
+  "resolution": {
+    "QUALIFY": {
+      "mode": "cheapest_wins"
+    },
+    "ACCUMULATE": {
+      "mode": "cheapest_wins"
+    }
+  },
+  "adjust_order": null,
+  "rules": [
+    {
+      "id": "eb-weekday",
+      "type": "time_window",
+      "stage": "QUALIFY",
+      "space_classes": [
+        "standard"
+      ],
+      "label": "Early bird",
+      "applies_on": {
+        "kind": "days_of_week",
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      "enter_from": "06:00",
+      "enter_by": "09:00",
+      "exit_by": "17:00",
+      "day_span": "same_day",
+      "effect": {
+        "kind": "flat",
+        "price_minor": 1200
+      }
+    },
+    {
+      "id": "hourly",
+      "type": "increment",
+      "stage": "ACCUMULATE",
+      "space_classes": [
+        "standard",
+        "vip"
+      ],
+      "first_period_minutes": 60,
+      "first_period_minor": 800,
+      "repeat_period_minutes": 60,
+      "repeat_period_minor": 400,
+      "rounding": "ceil",
+      "max_duration_minutes": 1440
+    },
+    {
+      "id": "cap",
+      "type": "daily_max",
+      "stage": "CAP",
+      "space_classes": [
+        "standard",
+        "vip"
+      ],
+      "max_minor": 3000,
+      "day_boundary": "calendar_day"
+    },
+    {
+      "id": "vip-surcharge",
+      "type": "space_surcharge",
+      "stage": "SURCHARGE",
+      "space_classes": [
+        "vip"
+      ],
+      "surcharge_minor": 500
+    }
+  ],
+  "decisions": []
+}

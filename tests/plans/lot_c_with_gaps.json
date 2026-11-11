@@ -1,0 +1,45 @@
+{
+  "plan_version": "lot-c-2026-03",
+  "effective_from": "2026-03-01T00:00:00-05:00",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "space_classes": [
+    "standard",
+    "reserved"
+  ],
+  "resolution": {
+    "QUALIFY": {
+      "mode": "cheapest_wins"
+    },
+    "ACCUMULATE": {
+      "mode": "cheapest_wins"
+    }
+  },
+  "adjust_order": null,
+  "rules": [
+    {
+      "id": "twenty-min",
+      "type": "increment",
+      "stage": "ACCUMULATE",
+      "space_classes": [
+        "standard"
+      ],
+      "first_period_minutes": 20,
+      "first_period_minor": 200,
+      "repeat_period_minutes": 20,
+      "repeat_period_minor": 150,
+      "rounding": "ceil",
+      "max_duration_minutes": 720
+    },
+    {
+      "id": "reserved-surcharge",
+      "type": "space_surcharge",
+      "stage": "SURCHARGE",
+      "space_classes": [
+        "reserved"
+      ],
+      "surcharge_minor": 1000
+    }
+  ],
+  "decisions": []
+}

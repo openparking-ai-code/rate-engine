@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]'
+      - run: ruff check .
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: No real personal data in the repository
+        # The self-test first: before trusting the result, prove the check can
+        # fail. It plants a real-looking address and requires a rejection.
+        run: |
+          node .github/scripts/check-no-real-data.js --self-test
+          node .github/scripts/check-no-real-data.js
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The lowest version supported and a current one. Nothing here may
+        # quietly depend on a newer interpreter than an integrator's.
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      - name: This module has no dependencies, and that is a published claim
+        # `pip install -e .` with no extras must leave nothing but the package
+        # itself. A dependency arriving here is a dependency in every
+        # integrator's build, and the README says there are none.
+        run: |
+          python - <<'PY'
+          import importlib.metadata as md
+          requires = md.distribution("openparking-rate-engine").requires or []
+          runtime = [r for r in requires if "extra ==" not in r]
+          assert runtime == [], f"the runtime dependency list is no longer empty: {runtime}"
+          print("no runtime dependencies, as published")
+          PY
+
+      - name: The suite
+        # No allowance is named. This module has no optional dependency, no
+        # weights and no hardware, so nothing in it has a legitimate reason to
+        # skip -- and a guarantee that did not run and pass fails this step.
+        run: pytest -q
+
+      - name: The CLI works with nothing installed but this package
+        # The definition of done, as a check: someone with no parking system
+        # points this at a plan and gets a priced stay back.
+        #
+        # BOTH exit codes are asserted, and the second is the one that matters.
+        # This step first read only the happy path and went red on its own
+        # example plan -- correctly: that plan states a 24-hour ceiling, so it
+        # HAS a gap, and `validate-plan` exits non-zero when it finds one. A
+        # check that only ever runs the clean case cannot tell a working
+        # validator from one that reports nothing.
+        run: |
+          set -o pipefail
+          rate-engine quote --plan tests/plans/downtown_v2.json \
+            --entry 2026-03-03T09:14:00-05:00 --exit 2026-03-03T18:40:00-05:00 \
+            --space-class standard --currency USD
+
+          # A plan with nothing missing: exit 0.
+          rate-engine validate-plan --plan tests/plans/simple_no_gaps.json
+
+          # A plan with a gap: exit 1, and it must name the gap rather than
+          # merely failing. This is the positive control for the line above --
+          # without it, a validator that found nothing in ANY plan would pass.
+          if rate-engine validate-plan --plan tests/plans/lot_c_with_gaps.json \
+               | tee "$RUNNER_TEMP/gaps.txt"; then
+            echo "a plan with two known gaps was reported clean"; exit 1
+          fi
+          grep -q "GAP_NO_ACCUMULATE_RULE" "$RUNNER_TEMP/gaps.txt" || {
+            echo "it exited non-zero, but not because of the gap this asserts:"
+            cat "$RUNNER_TEMP/gaps.txt"; exit 1; }
+          echo "reported the gap, and refused for the right reason"
+
+          # And the refusal reaches the quote path, naming the same code.
+          if rate-engine quote --plan tests/plans/lot_c_with_gaps.json \
+               --entry 2026-03-03T09:00:00-05:00 --exit 2026-03-03T10:05:00-05:00 \
+               --space-class reserved --currency USD | tee "$RUNNER_TEMP/q.txt"; then
+            echo "a stay nothing prices came back with a number"; exit 1
+          fi
+          grep -q "GAP_NO_ACCUMULATE_RULE" "$RUNNER_TEMP/q.txt" || {
+            echo "the quote failed for some other reason:"; cat "$RUNNER_TEMP/q.txt"; exit 1; }
+          echo "the engine refused and named what was missing, as required"
+
+  controls:
+    name: controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]'
+
+      - name: Anchor pre-flight
+        # Each fail-control plants a string into a source file. Editing the line
+        # an anchor sits on silently retires the control that depends on it, and
+        # the suite then passes while the control measures nothing. This answers
+        # that whole failure mode in a second, before the controls themselves
+        # run -- and it is a separate step so a failure here is visible as one.
+        run: python scripts/fail_controls.py --anchors
+
+      - name: The control ids match their pin
+        # The full run below refuses a guarantee with NO control, and nothing
+        # else looked at the arms: deleting one arm of a guarantee that has
+        # several left every step green. scripts/fail_controls.ids pins the set,
+        # compared by equality both ways, so a removed arm -- or an added one not
+        # recorded -- is red here, as its own step.
+        run: python scripts/fail_controls.py --pin
+
+      - name: Every guarantee, proven able to FAIL
+        # Breaks the thing each guarantee guards and requires red. A test that
+        # has never failed is a decoration. This step is what makes every
+        # guarantee in docs/CONTRACT.md measured rather than asserted.
+        #
+        # No count is written here on purpose: the script derives the set from
+        # tests/_guarantees.py and refuses to run if a guarantee has no control,
+        # so a number in this comment could only ever go stale. One did -- it
+        # said eight after the cut round took the set to eleven.
+        run: python scripts/fail_controls.py
+
+      - name: The working tree is unchanged after every defect was planted
+        # Every plant restores in a `finally` and verifies the bytes. This is the
+        # independent check on that: a control that left a defect behind would
+        # otherwise be discovered by whatever ran next.
+        run: git diff --exit-code
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]'
+
+      - name: Every published figure AND SENTENCE is still the generated one
+        # docs/CONTRACT.md's marked blocks are DERIVED -- the rule types from the
+        # registry, the gap codes from findings.py, the guarantees from the test
+        # registry, and the worked example by running the engine and printing
+        # what it returned. A number or a sentence edited by hand turns this red.
+        run: |
+          python scripts/generate_contract.py --check
+          git diff --exit-code docs/CONTRACT.md
+
+      - name: Generation is not verification
+        # The step above proves the document matches the generator. It cannot
+        # prove the generator DERIVES anything -- a template whose prose is fixed
+        # everywhere except the holes agrees with itself perfectly. These tests
+        # plant values that contradict the prose and require the prose to change.
+        run: pytest tests/test_contract_is_generated.py -q

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openparking-rate-engine"
+version = "0.1.0"
+description = "Open Parking AI rate engine — price a parking stay, and explain every line of the answer"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+# Standard library only, and it will stay that way. This module is arithmetic on
+# integers plus an HTTP surface; a dependency here would be a dependency in
+# every integrator's build for no capability they cannot already get. `zoneinfo`
+# is stdlib from 3.9, which is what makes the timezone model free.
+#
+# NOTE for anyone tempted to add a decimal or money library: money in this
+# module is a Python `int` of minor units and nothing else. See money.py.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[project.scripts]
+rate-engine = "rate_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = [
+  # A test that proves one of the guarantees docs/CONTRACT.md states. CI fails
+  # when one of these skips without its reason being declared, because a
+  # guarantee whose test can quietly not run is not a guarantee.
+  #
+  # The identifier is not decoration: tests/_guarantees.py holds the canonical
+  # registry, conftest requires every registered id to have RUN, and
+  # docs/CONTRACT.md is generated from the same registry. One source, three
+  # consumers -- so a guarantee cannot be dropped from any of them silently.
+  "guarantee(id): proves a registered guarantee; may not skip silently",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
